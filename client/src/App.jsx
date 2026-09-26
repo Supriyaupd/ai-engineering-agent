@@ -1,122 +1,144 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+﻿import { useState } from "react";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [issue, setIssue] = useState("");
+  const [diagnosis, setDiagnosis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [selectedFile, setSelectedFile] = useState("");
+  const [fix, setFix] = useState(null);
+  const [fixLoading, setFixLoading] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
+
+  const handleInvestigate = async () => {
+    setLoading(true);
+    setError(null);
+    setDiagnosis(null);
+    setFix(null);
+    setApplyResult(null);
+    try {
+      const res = await fetch("http://localhost:5000/api/agent/investigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issue }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setDiagnosis(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProposeFix = async (filePath) => {
+    setSelectedFile(filePath);
+    setFixLoading(true);
+    setFix(null);
+    setApplyResult(null);
+    setError(null);
+    try {
+      const res = await fetch("http://localhost:5000/api/agent/propose-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diagnosis, filePath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setFix(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setFixLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/agent/apply-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: fix.filePath,
+          originalCode: fix.originalCode,
+          fixedCode: fix.fixedCode,
+        }),
+      });
+      const data = await res.json();
+      setApplyResult(data);
+    } catch (err) {
+      setApplyResult({ error: err.message });
+    }
+  };
+
+  const handleReject = () => {
+    setFix(null);
+    setSelectedFile("");
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 700 }}>
+      <h1>AI Engineering Agent</h1>
 
-      <div className="ticks"></div>
+      <p>Describe your issue:</p>
+      <input
+        style={{ width: "100%", padding: "0.5rem" }}
+        value={issue}
+        onChange={(e) => setIssue(e.target.value)}
+      />
+      <button onClick={handleInvestigate} disabled={loading} style={{ marginTop: "1rem" }}>
+        {loading ? "Investigating..." : "Investigate"}
+      </button>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
+      {error && <p style={{ color: "red" }}>Error: {error}</p>}
+
+      {diagnosis && (
+        <div style={{ marginTop: "1.5rem", border: "1px solid #ccc", padding: "1rem" }}>
+          <p><strong>Understanding:</strong> {diagnosis.understanding}</p>
+          <p><strong>Likely Cause:</strong> {diagnosis.likelyCause}</p>
+          <p><strong>Files to inspect:</strong></p>
           <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
+            {diagnosis.filesToInspect.map((f) => (
+              <li key={f}>
+                {f}{" "}
+                <button onClick={() => handleProposeFix(f)} disabled={fixLoading}>
+                  {fixLoading && selectedFile === f ? "Generating fix..." : "Propose Fix"}
+                </button>
+              </li>
+            ))}
           </ul>
+          <p><strong>Suggested Fix:</strong> {diagnosis.suggestedFix}</p>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {fix && (
+        <div style={{ marginTop: "1.5rem", border: "1px solid #888", padding: "1rem" }}>
+          <h3>Proposed Change — {fix.filePath}</h3>
+          <p>{fix.explanation}</p>
+          <pre style={{ background: "#fee", padding: "0.5rem", whiteSpace: "pre-wrap" }}>
+            - {fix.originalCode}
+          </pre>
+          <pre style={{ background: "#efe", padding: "0.5rem", whiteSpace: "pre-wrap" }}>
+            + {fix.fixedCode}
+          </pre>
+          <button onClick={handleApprove} style={{ marginRight: "1rem" }}>Approve</button>
+          <button onClick={handleReject}>Reject</button>
+        </div>
+      )}
+
+      {applyResult && (
+        <div style={{ marginTop: "1rem" }}>
+          {applyResult.success ? (
+            <p style={{ color: "green" }}>✅ {applyResult.message}</p>
+          ) : (
+            <p style={{ color: "red" }}>⚠️ {applyResult.error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;

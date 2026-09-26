@@ -1,8 +1,11 @@
 ﻿require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 const { diagnoseIssue } = require("./services/aiAgent");
 const { readFile, searchCode, runTests } = require("./services/tools");
+const { proposeFix } = require("./services/fixGenerator");
 
 const app = express();
 app.use(cors());
@@ -40,9 +43,47 @@ app.post("/api/agent/search-code", (req, res) => {
   }
 });
 
-app.post("/api/agent/run-tests", (req, res) => {
-  const result = runTests();
-  res.json(result);
+app.post("/api/agent/run-tests", async (req, res) => {
+  try {
+    const result = await runTests();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to run tests" });
+  }
+});
+
+app.post("/api/agent/propose-fix", async (req, res) => {
+  const { diagnosis, filePath } = req.body;
+  try {
+    const fileContent = readFile(filePath);
+    const fix = await proposeFix(diagnosis, fileContent, filePath);
+    res.json(fix);
+  } catch (err) {
+    console.error("Propose fix failed:", err.message);
+    res.status(500).json({ error: "Failed to propose fix" });
+  }
+});
+
+app.post("/api/agent/apply-fix", (req, res) => {
+  const { filePath, originalCode, fixedCode } = req.body;
+  try {
+    const fullPath = path.resolve(__dirname, "..", filePath);
+    const content = fs.readFileSync(fullPath, "utf-8");
+
+    const normalize = (s) => s.replace(/\r\n/g, "\n");
+    const normalizedContent = normalize(content);
+    const normalizedOriginal = normalize(originalCode);
+    const normalizedFixed = normalize(fixedCode);
+
+    if (!normalizedContent.includes(normalizedOriginal)) {
+      return res.status(400).json({ error: "Original code not found in file — cannot apply safely" });
+    }
+    const updated = normalizedContent.replace(normalizedOriginal, normalizedFixed);
+    fs.writeFileSync(fullPath, updated, "utf-8");
+    res.json({ success: true, message: "Fix applied" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
