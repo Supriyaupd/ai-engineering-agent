@@ -43,9 +43,9 @@ app.post("/api/agent/search-code", (req, res) => {
   }
 });
 
-app.post("/api/agent/run-tests", async (req, res) => {
+app.post("/api/agent/run-tests", (req, res) => {
   try {
-    const result = await runTests();
+    const result = runTests();
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: "Failed to run tests" });
@@ -76,11 +76,22 @@ app.post("/api/agent/apply-fix", (req, res) => {
     const normalizedFixed = normalize(fixedCode);
 
     if (!normalizedContent.includes(normalizedOriginal)) {
-      return res.status(400).json({ error: "Original code not found in file — cannot apply safely" });
+      return res.status(400).json({ error: "Original code not found in file - cannot apply safely" });
     }
+
     const updated = normalizedContent.replace(normalizedOriginal, normalizedFixed);
     fs.writeFileSync(fullPath, updated, "utf-8");
-    res.json({ success: true, message: "Fix applied" });
+
+    const testResult = runTests();
+
+    res.json({
+      success: true,
+      message: "Fix applied",
+      verification: {
+        verified: testResult.success,
+        testOutput: testResult.output,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

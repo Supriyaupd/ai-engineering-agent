@@ -18,7 +18,10 @@ function searchCode(query) {
     const fullDir = path.join(PROJECT_ROOT, dir);
     if (!fs.existsSync(fullDir) || !fs.statSync(fullDir).isDirectory()) continue;
     try {
-      const cmd = `findstr /s /i /m /c:"${query}" *.js *.jsx`;
+      const isWin = process.platform === "win32";
+      const cmd = isWin
+        ? `findstr /s /i /m /c:"${query}" *.js *.jsx`
+        : `grep -rl "${query}" --include="*.js" --include="*.jsx" .`;
       const output = execSync(cmd, { cwd: fullDir, encoding: "utf-8" });
       output.split("\r\n").filter(Boolean).forEach((f) => results.push(path.join(dir, f)));
     } catch (err) {
