@@ -1,4 +1,4 @@
-﻿# AI Engineering Agent
+# Code Sentinel
 
 **Investigate to Explain to Fix to Verify**
 
@@ -10,7 +10,7 @@ AI coding tools increasingly can modify code directly - but developers need to s
 
 ## The solution
 
-AI Engineering Agent gives developers a structured, auditable loop:
+Code Sentinel gives developers a structured, auditable loop:
 
 1. **Investigate** - describe an issue in plain language
 2. **Explain** - the agent returns a structured diagnosis: its understanding of the problem, likely root cause, and relevant files
@@ -78,3 +78,4 @@ This project was developed with the assistance of IBM Bob during the IBM Bob 2.0
 - Restrict AI file-path suggestions to actual project structure
 - Persistent history of investigations and fixes
 - Authentication for multi-user use
+
