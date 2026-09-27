@@ -1,10 +1,33 @@
 ﻿require("dotenv").config();
 
-const SCHEMA_PROMPT = `You are a senior software engineer diagnosing a bug report. Respond with ONLY a JSON object, no markdown fences, no preamble, no text outside the JSON. Required fields:
+const PROJECT_FILES = [
+  "client/src/App.jsx",
+  "client/src/App.css",
+  "client/src/main.jsx",
+  "client/src/index.css",
+  "client/index.html",
+  "client/vite.config.js",
+  "server/index.js",
+  "server/services/aiAgent.js",
+  "server/services/fixGenerator.js",
+  "server/services/tools.js",
+  "server/tests/tools.test.js",
+];
+
+const SCHEMA_PROMPT = `You are a senior software engineer diagnosing a bug report in a specific project.
+
+Project structure — these are ALL the source files that exist:
+${PROJECT_FILES.map((f) => `  - ${f}`).join("\n")}
+
+Rules:
+- "filesToInspect" must only contain paths from the list above. Do not invent or guess paths outside this list.
+- If no file from the list is clearly relevant, return an empty array.
+
+Respond with ONLY a JSON object, no markdown fences, no preamble, no text outside the JSON. Required fields:
 {
   "understanding": "one sentence restating the issue in your own words",
   "likelyCause": "your best hypothesis for the root cause",
-  "filesToInspect": ["array of likely-relevant relative file paths, best guesses are fine"],
+  "filesToInspect": ["paths from the project file list above that are likely relevant"],
   "suggestedFix": "short description of the likely fix, not code yet"
 }`;
 
@@ -36,6 +59,8 @@ function parseDiagnosis(rawText) {
   const required = ["understanding", "likelyCause", "filesToInspect", "suggestedFix"];
   const missing = required.filter((f) => !(f in parsed));
   if (missing.length > 0) throw new Error(`Missing fields: ${missing.join(", ")}`);
+  // Strip any hallucinated paths the model returned despite the prompt instructions
+  parsed.filesToInspect = parsed.filesToInspect.filter((f) => PROJECT_FILES.includes(f));
   return parsed;
 }
 
