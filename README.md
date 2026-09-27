@@ -63,7 +63,13 @@ Open the Vite dev server URL (typically http://localhost:5173).
 
 ## Built with IBM Bob
 
-This project was developed with the assistance of IBM Bob during the IBM Bob 2.0 Hackathon. See bob-screenshots/ for task session evidence.
+This project was developed with the assistance of IBM Bob during the IBM Bob 2.0 Hackathon.
+
+### Task Session Evidence
+
+Bob reviewed the backend for bugs and security issues, and the identified issues were resolved.
+
+![Bob task completion summary](bob-screenshots/Screenshot_2026-09-27_065111.png)
 
 ## Tech stack
 
