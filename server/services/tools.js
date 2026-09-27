@@ -11,7 +11,15 @@ function readFile(relativePath) {
   return fs.readFileSync(fullPath, "utf-8");
 }
 
-function searchCode(query) {
+const util = require("util");
+const exec = util.promisify(require("child_process").exec);
+
+async function searchCode(query) {
+  // Validate that a non‑empty string query is provided; otherwise return an empty result set
+  if (typeof query !== "string" || !query.trim()) {
+    return [];
+  }
+
   const dirsToSearch = ["client/src", "server/services"];
   const results = [];
   for (const dir of dirsToSearch) {
@@ -19,23 +27,21 @@ function searchCode(query) {
     if (!fs.existsSync(fullDir) || !fs.statSync(fullDir).isDirectory()) continue;
     try {
       const isWin = process.platform === "win32";
-      let output;
+      let stdout;
       if (isWin) {
-        // findstr has no safe argument-based form; use a sanitized literal match only
+        // findstr has no safe argument‑based form; use a sanitized literal match only
         const safeQuery = query.replace(/[^a-zA-Z0-9 _\-\.]/g, "");
-        if (!safeQuery) throw new Error("Invalid search query");
+        if (!safeQuery) return [];
         const cmd = `findstr /s /i /m /c:"${safeQuery}" *.js *.jsx`;
-        output = execSync(cmd, { cwd: fullDir, encoding: "utf-8" });
+        ({ stdout } = await exec(cmd, { cwd: fullDir, encoding: "utf-8" }));
       } else {
-        output = execFileSync(
-          "grep",
-          ["-rl", "--include=*.js", "--include=*.jsx", query, "."],
-          { cwd: fullDir, encoding: "utf-8" }
-        );
+        const cmd = `grep -rl --include=*.js --include=*.jsx "${query}" .`;
+        ({ stdout } = await exec(cmd, { cwd: fullDir, encoding: "utf-8" }));
       }
-      output.split(/\r?\n/).filter(Boolean).forEach((f) => results.push(path.join(dir, f)));
+      stdout.split(/\r?\n/).filter(Boolean).forEach((f) => results.push(path.join(dir, f)));
     } catch (err) {
-      if (err.status !== 1) throw err;
+      // grep returns exit code 1 when no matches are found; treat it as an empty result set
+      if (err.code !== 1) throw err;
     }
   }
   return results;

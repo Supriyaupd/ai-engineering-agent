@@ -1,160 +1,277 @@
-﻿import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import "./App.css";
+
+let idCounter = 0;
+const nextId = () => ++idCounter;
 
 function App() {
+  const [conversations, setConversations] = useState([]);
+  const [activeId, setActiveId] = useState(null);
   const [issue, setIssue] = useState("");
-  const [diagnosis, setDiagnosis] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [fixLoadingFor, setFixLoadingFor] = useState(null);
+  const [applyingFor, setApplyingFor] = useState(null);
+  const scrollRef = useRef(null);
 
-  const [selectedFile, setSelectedFile] = useState("");
-  const [fix, setFix] = useState(null);
-  const [fixLoading, setFixLoading] = useState(false);
-  const [applyResult, setApplyResult] = useState(null);
-  const [applying, setApplying] = useState(false);
+  const active = conversations.find((c) => c.id === activeId) || null;
+  const messages = active ? active.messages : [];
 
-  const handleInvestigate = async () => {
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const addMessage = (convId, message) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === convId ? { ...c, messages: [...c.messages, message] } : c
+      )
+    );
+  };
+
+  const startNewConversation = () => {
+    setActiveId(null);
+    setIssue("");
+  };
+
+  const handleSend = async () => {
+    if (!issue.trim() || loading) return;
+    const text = issue.trim();
+    setIssue("");
     setLoading(true);
-    setError(null);
-    setDiagnosis(null);
-    setFix(null);
-    setApplyResult(null);
+
+    let convId = activeId;
+    if (!convId) {
+      convId = nextId();
+      const title = text.length > 42 ? text.slice(0, 42) + "..." : text;
+      setConversations((prev) => [
+        { id: convId, title, messages: [] },
+        ...prev,
+      ]);
+      setActiveId(convId);
+    }
+
+    addMessage(convId, { id: nextId(), role: "user", type: "text", text });
+
     try {
       const res = await fetch("http://localhost:5000/api/agent/investigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issue }),
+        body: JSON.stringify({ issue: text }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-      setDiagnosis(data);
+      addMessage(convId, { id: nextId(), role: "agent", type: "diagnosis", data });
     } catch (err) {
-      setError(err.message);
+      addMessage(convId, { id: nextId(), role: "agent", type: "error", text: err.message });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleProposeFix = async (filePath) => {
-    setSelectedFile(filePath);
-    setFixLoading(true);
-    setFix(null);
-    setApplyResult(null);
-    setError(null);
+  const handleProposeFix = async (filePath, diagnosisData) => {
+    const convId = activeId;
+    setFixLoadingFor(filePath);
     try {
       const res = await fetch("http://localhost:5000/api/agent/propose-fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ diagnosis, filePath }),
+        body: JSON.stringify({ diagnosis: diagnosisData, filePath }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-      setFix(data);
+      addMessage(convId, { id: nextId(), role: "agent", type: "fix", data, resolved: false });
     } catch (err) {
-      setError(err.message);
+      addMessage(convId, { id: nextId(), role: "agent", type: "error", text: err.message });
     } finally {
-      setFixLoading(false);
+      setFixLoadingFor(null);
     }
   };
 
-  const handleApprove = async () => {
-    setApplying(true);
+  const markFixResolved = (convId, msgId) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === convId
+          ? {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === msgId ? { ...m, resolved: true } : m
+              ),
+            }
+          : c
+      )
+    );
+  };
+
+  const handleApprove = async (msg) => {
+    const convId = activeId;
+    setApplyingFor(msg.id);
+    markFixResolved(convId, msg.id);
     try {
       const res = await fetch("http://localhost:5000/api/agent/apply-fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filePath: fix.filePath,
-          originalCode: fix.originalCode,
-          fixedCode: fix.fixedCode,
+          filePath: msg.data.filePath,
+          originalCode: msg.data.originalCode,
+          fixedCode: msg.data.fixedCode,
         }),
       });
       const data = await res.json();
-      setApplyResult(data);
+      addMessage(convId, { id: nextId(), role: "agent", type: "verification", data });
     } catch (err) {
-      setApplyResult({ error: err.message });
+      addMessage(convId, { id: nextId(), role: "agent", type: "error", text: err.message });
     } finally {
-      setApplying(false);
+      setApplyingFor(null);
     }
   };
 
-  const handleReject = () => {
-    setFix(null);
-    setSelectedFile("");
+  const handleReject = (msg) => {
+    markFixResolved(activeId, msg.id);
+    addMessage(activeId, { id: nextId(), role: "agent", type: "rejected" });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 700 }}>
-      <h1>AI Engineering Agent</h1>
-      <p style={{ color: "#888" }}>Investigate to Explain to Fix to Verify</p>
+    <div className="layout">
+      <aside className="sidebar">
+        <button className="new-chat-btn" onClick={startNewConversation}>
+          + New investigation
+        </button>
+        <div className="sidebar-title">History</div>
+        {conversations.length === 0 && (
+          <p className="sidebar-empty">Your investigations will appear here.</p>
+        )}
+        <ul className="history-list">
+          {conversations.map((c) => (
+            <li
+              key={c.id}
+              className={"history-item " + (c.id === activeId ? "active" : "")}
+              onClick={() => setActiveId(c.id)}
+            >
+              {c.title}
+            </li>
+          ))}
+        </ul>
+      </aside>
 
-      <p>Describe your issue:</p>
-      <input
-        style={{ width: "100%", padding: "0.5rem" }}
-        value={issue}
-        onChange={(e) => setIssue(e.target.value)}
-      />
-      <button onClick={handleInvestigate} disabled={loading} style={{ marginTop: "1rem" }}>
-        {loading ? "Investigating..." : "Investigate"}
-      </button>
-
-      {error && <p style={{ color: "red" }}>Error: {error}</p>}
-
-      {diagnosis && (
-        <div style={{ marginTop: "1.5rem", border: "1px solid #ccc", padding: "1rem" }}>
-          <p><strong>Understanding:</strong> {diagnosis.understanding}</p>
-          <p><strong>Likely Cause:</strong> {diagnosis.likelyCause}</p>
-          <p><strong>Files to inspect:</strong></p>
-          <ul>
-            {diagnosis.filesToInspect.map((f) => (
-              <li key={f}>
-                {f}{" "}
-                <button onClick={() => handleProposeFix(f)} disabled={fixLoading}>
-                  {fixLoading && selectedFile === f ? "Generating fix..." : "Propose Fix"}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p><strong>Suggested Fix:</strong> {diagnosis.suggestedFix}</p>
+      <main className="chat-main">
+        <div className="chat-header">
+          <div className="chat-title">Code Sentinel</div>
+          <div className="chat-subtitle">Investigate - Explain - Fix - Verify</div>
         </div>
-      )}
 
-      {fix && (
-        <div style={{ marginTop: "1.5rem", border: "1px solid #888", padding: "1rem" }}>
-          <h3>Proposed Change - {fix.filePath}</h3>
-          <p>{fix.explanation}</p>
-          <pre style={{ background: "#fee", padding: "0.5rem", whiteSpace: "pre-wrap" }}>
-            - {fix.originalCode}
-          </pre>
-          <pre style={{ background: "#efe", padding: "0.5rem", whiteSpace: "pre-wrap" }}>
-            + {fix.fixedCode}
-          </pre>
-          <button onClick={handleApprove} disabled={applying} style={{ marginRight: "1rem" }}>
-            {applying ? "Applying & testing..." : "Approve"}
-          </button>
-          <button onClick={handleReject} disabled={applying}>Reject</button>
-        </div>
-      )}
+        <div className="thread" ref={scrollRef}>
+          {messages.length === 0 && (
+            <div className="empty-state">
+              <div className="hero-avatar">AI</div>
+              <h2>Ready to fix something?</h2>
+              <p className="empty-hint">Describe a bug below. Nothing is ever applied without your approval, and every fix is verified by running real tests.</p>
+            </div>
+          )}
 
-      {applyResult && (
-        <div style={{ marginTop: "1.5rem", padding: "1rem", border: "2px solid", borderColor: applyResult.verification?.verified ? "green" : "orange" }}>
-          {applyResult.error && <p style={{ color: "red" }}>Error: {applyResult.error}</p>}
-          {applyResult.success && (
-            <>
-              <p>Fix applied</p>
-              {applyResult.verification?.verified ? (
-                <p style={{ color: "green", fontWeight: "bold" }}>FIX VERIFIED - all tests passed</p>
-              ) : (
-                <p style={{ color: "orange", fontWeight: "bold" }}>NEEDS MORE WORK - tests failed</p>
-              )}
-              <pre style={{ background: "#f5f5f5", padding: "0.5rem", fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
-                {applyResult.verification?.testOutput}
-              </pre>
-            </>
+          {messages.map((m) => (
+            <div key={m.id} className={"msg-row " + (m.role === "user" ? "from-user" : "from-agent")}>
+              <div className="msg-avatar">{m.role === "user" ? "You" : "Agent"}</div>
+              <div className="msg-bubble">
+                {m.type === "text" && <p>{m.text}</p>}
+
+                {m.type === "error" && <p className="msg-error">{m.text}</p>}
+
+                {m.type === "rejected" && <p className="msg-muted">Fix rejected. No changes were made.</p>}
+
+                {m.type === "diagnosis" && (
+                  <div>
+                    <div className="msg-label">Diagnosis</div>
+                    <p><strong>Understanding:</strong> {m.data.understanding}</p>
+                    <p><strong>Likely cause:</strong> {m.data.likelyCause}</p>
+                    <div className="msg-label" style={{ marginTop: "0.6rem" }}>Files to inspect</div>
+                    <ul className="file-list">
+                      {m.data.filesToInspect.map((f) => (
+                        <li className="file-item" key={f}>
+                          <span className="file-path">{f}</span>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => handleProposeFix(f, m.data)}
+                            disabled={fixLoadingFor !== null}
+                          >
+                            {fixLoadingFor === f ? "Working..." : "Propose fix"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p style={{ marginTop: "0.6rem" }}><strong>Suggested fix:</strong> {m.data.suggestedFix}</p>
+                  </div>
+                )}
+
+                {m.type === "fix" && (
+                  <div>
+                    <div className="msg-label">Proposed change - {m.data.filePath}</div>
+                    <p>{m.data.explanation}</p>
+                    <div className="diff-block diff-remove">- {m.data.originalCode}</div>
+                    <div className="diff-block diff-add">+ {m.data.fixedCode}</div>
+                    {!m.resolved && (
+                      <div className="button-row">
+                        <button className="btn btn-approve" onClick={() => handleApprove(m)} disabled={applyingFor === m.id}>
+                          {applyingFor === m.id ? "Applying and testing..." : "Approve"}
+                        </button>
+                        <button className="btn btn-reject" onClick={() => handleReject(m)} disabled={applyingFor === m.id}>
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {m.type === "verification" && (
+                  <div className={m.data.verification?.verified ? "verify-ok" : m.data.error ? "verify-error" : "verify-warn"}>
+                    <div className="msg-label">Verification</div>
+                    {m.data.error && <p><strong>{m.data.error}</strong></p>}
+                    {m.data.success && (
+                      <>
+                        <p><strong>{m.data.verification?.verified ? "Fix verified - all tests passed" : "Needs more work - tests failed"}</strong></p>
+                        <div className="test-output">{m.data.verification?.testOutput}</div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {loading && (
+            <div className="msg-row from-agent">
+              <div className="msg-avatar">Agent</div>
+              <div className="msg-bubble"><p className="msg-muted">Investigating...</p></div>
+            </div>
           )}
         </div>
-      )}
+
+        <div className="composer">
+          <textarea
+            className="composer-input"
+            placeholder="Describe a bug or issue..."
+            value={issue}
+            onChange={(e) => setIssue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={1}
+          />
+          <button className="btn btn-primary" onClick={handleSend} disabled={loading || !issue.trim()}>
+            Send
+          </button>
+        </div>
+      </main>
     </div>
   );
 }
 
 export default App;
+
+

@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 const FIX_PROMPT = `You are a senior software engineer. Given a diagnosis and the content of a relevant file, propose a specific code fix. Respond with ONLY a JSON object, no markdown fences, no text outside the JSON:
 {
@@ -21,7 +21,7 @@ async function proposeFix(diagnosis, fileContent, filePath) {
         { role: "system", content: FIX_PROMPT },
         { role: "user", content: `Diagnosis: ${JSON.stringify(diagnosis)}\n\nFile: ${filePath}\n\nContent:\n${fileContent}` },
       ],
-      max_tokens: 800,
+      max_tokens: 2500,
     }),
   });
 
@@ -32,3 +32,4 @@ async function proposeFix(diagnosis, fileContent, filePath) {
 }
 
 module.exports = { proposeFix };
+
